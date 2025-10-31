@@ -351,17 +351,20 @@ class ModularDataVisualizer {
                 timeline.max = this.audioBuffer.duration;
                 this.updateTimeDisplay(0, this.audioBuffer.duration);
                 
-                // Extract channel data for visualization (if needed)
-                if (!this.currentData.data.channels) {
-                    const channels = [];
-                    for (let i = 0; i < this.audioBuffer.numberOfChannels; i++) {
-                        channels.push(this.audioBuffer.getChannelData(i));
-                    }
-                    this.currentData.data.channels = channels;
-                    this.currentData.data.buffer = this.audioBuffer;
-                    this.currentData.metadata.duration = this.audioBuffer.duration;
-                    this.currentData.metadata.sampleRate = this.audioBuffer.sampleRate;
-                    this.currentData.metadata.channels = this.audioBuffer.numberOfChannels;
+                // Extract channel data for visualization
+                const channels = [];
+                for (let i = 0; i < this.audioBuffer.numberOfChannels; i++) {
+                    channels.push(this.audioBuffer.getChannelData(i));
+                }
+                this.currentData.data.channels = channels;
+                this.currentData.data.buffer = this.audioBuffer;
+                this.currentData.metadata.duration = this.audioBuffer.duration;
+                this.currentData.metadata.sampleRate = this.audioBuffer.sampleRate;
+                this.currentData.metadata.channels = this.audioBuffer.numberOfChannels;
+                
+                // Update visualization with decoded data
+                if (this.visualizationEngine && this.visualizationEngine.currentViz) {
+                    this.visualizationEngine.currentViz.hasChannelData = true;
                 }
                 
                 this.audioDecoded = true;

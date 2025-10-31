@@ -258,6 +258,12 @@ class WaveformViz {
             return;
         }
         
+        // Check if channel data is available
+        if (!this.data.data.channels || !this.data.data.channels[0]) {
+            this.render2D();
+            return;
+        }
+        
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
         gl.useProgram(this.program);
         
@@ -286,45 +292,21 @@ class WaveformViz {
     }
 
     render2D() {
-        const ctx = this.gl;
-        const canvas = ctx.canvas;
+        const gl = this.gl;
+        const canvas = gl.canvas;
         
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.strokeStyle = `rgba(${this.params.color.map(c => c * 255).join(',')})`;
-        ctx.lineWidth = this.params.lineWidth;
-        
-        const channel = this.data.data.channels[0];
-        const samples = Math.min(channel.length, 4096);
-        
-        ctx.beginPath();
-        for (let i = 0; i < samples; i++) {
-            const x = (i / samples) * canvas.width;
-            const y = (0.5 - channel[i] * 0.5 * this.params.amplitude) * canvas.height;
-            
-            if (i === 0) ctx.moveTo(x, y);
-            else ctx.lineTo(x, y);
+        // If channel data not available, show message
+        if (!this.data.data.channels || !this.data.data.channels[0]) {
+            // Clear to black
+            gl.clearColor(0.05, 0.05, 0.1, 1.0);
+            gl.clear(gl.COLOR_BUFFER_BIT);
+            return;
         }
-        ctx.stroke();
         
-        // Draw playhead indicator
-        if (this.playheadPosition > 0) {
-            const playheadX = this.playheadPosition * canvas.width;
-            
-            ctx.strokeStyle = '#10b981';
-            ctx.lineWidth = 2;
-            ctx.setLineDash([5, 5]);
-            ctx.beginPath();
-            ctx.moveTo(playheadX, 0);
-            ctx.lineTo(playheadX, canvas.height);
-            ctx.stroke();
-            ctx.setLineDash([]);
-            
-            // Draw playhead time
-            ctx.fillStyle = '#10b981';
-            ctx.font = '12px monospace';
-            const time = (this.playheadPosition * (this.data.metadata.duration || 0)).toFixed(2);
-            ctx.fillText(`${time}s`, playheadX + 5, 20);
-        }
+        // Fall back to 2D rendering (not implemented for waveform)
+        // Just clear the canvas
+        gl.clearColor(0.05, 0.05, 0.1, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
     }
 
     updateParameters(params) {
