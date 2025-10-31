@@ -305,22 +305,10 @@ class ModularDataVisualizer {
     /**
      * Initialize audio playback functionality
      */
-    initAudioPlayback() {
+    async initAudioPlayback() {
         if (!this.currentData || this.currentData.metadata.type !== 'audio') {
             return;
         }
-
-        // Create AudioContext if not exists
-        if (!this.audioContext) {
-            this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        }
-
-        // Store audio data
-        this.audioBuffer = this.currentData.data;
-        this.audioSource = null;
-        this.isPlaying = false;
-        this.startTime = 0;
-        this.pauseTime = 0;
 
         // Get UI elements
         const playPauseBtn = document.getElementById('playPause');
@@ -328,12 +316,69 @@ class ModularDataVisualizer {
         const timeline = document.getElementById('audioTimeline');
         const timeDisplay = document.getElementById('timeDisplay');
 
-        // Update timeline max value
-        const duration = this.audioBuffer.duration;
-        timeline.max = duration;
+        if (!playPauseBtn || !stopBtn || !timeline || !timeDisplay) {
+            console.error('Audio controls not found in DOM');
+            return;
+        }
+
+        // Initialize state
+        this.audioBuffer = null;
+        this.audioSource = null;
+        this.isPlaying = false;
+        this.startTime = 0;
+        this.pauseTime = 0;
+        this.audioDecoded = false;
+
+        // Decode audio on first play (user gesture required)
+        const decodeAudio = async () => {
+            if (this.audioDecoded) return;
+
+            try {
+                console.log('🎵 Decoding audio...');
+                
+                // Create AudioContext NOW (after user gesture)
+                if (!this.audioContext) {
+                    this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                }
+
+                // Decode the audio data
+                const arrayBuffer = this.currentData.data.arrayBuffer;
+                this.audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
+                
+                console.log(`✅ Audio decoded: ${this.audioBuffer.numberOfChannels} channels, ${this.audioBuffer.sampleRate}Hz, ${this.audioBuffer.duration.toFixed(2)}s`);
+                
+                // Update timeline max
+                timeline.max = this.audioBuffer.duration;
+                this.updateTimeDisplay(0, this.audioBuffer.duration);
+                
+                // Extract channel data for visualization (if needed)
+                if (!this.currentData.data.channels) {
+                    const channels = [];
+                    for (let i = 0; i < this.audioBuffer.numberOfChannels; i++) {
+                        channels.push(this.audioBuffer.getChannelData(i));
+                    }
+                    this.currentData.data.channels = channels;
+                    this.currentData.data.buffer = this.audioBuffer;
+                    this.currentData.metadata.duration = this.audioBuffer.duration;
+                    this.currentData.metadata.sampleRate = this.audioBuffer.sampleRate;
+                    this.currentData.metadata.channels = this.audioBuffer.numberOfChannels;
+                }
+                
+                this.audioDecoded = true;
+            } catch (error) {
+                console.error('❌ Error decoding audio:', error);
+                alert('Error decoding audio file. Format may not be supported.');
+            }
+        };
 
         // Play/Pause button
-        playPauseBtn.addEventListener('click', () => {
+        playPauseBtn.addEventListener('click', async () => {
+            // Decode on first play
+            if (!this.audioDecoded) {
+                await decodeAudio();
+                if (!this.audioDecoded) return; // Failed to decode
+            }
+
             if (this.isPlaying) {
                 this.pauseAudio();
                 playPauseBtn.textContent = '▶️';
@@ -348,18 +393,27 @@ class ModularDataVisualizer {
             this.stopAudio();
             playPauseBtn.textContent = '▶️';
             timeline.value = 0;
-            this.updateTimeDisplay(0, duration);
+            if (this.audioBuffer) {
+                this.updateTimeDisplay(0, this.audioBuffer.duration);
+            }
         });
 
         // Timeline scrubber
-        timeline.addEventListener('input', (e) => {
+        timeline.addEventListener('input', async (e) => {
+            // Decode if not already done
+            if (!this.audioDecoded) {
+                await decodeAudio();
+                if (!this.audioDecoded) return;
+            }
+
             const time = parseFloat(e.target.value);
             this.seekAudio(time);
-            this.updateTimeDisplay(time, duration);
+            this.updateTimeDisplay(time, this.audioBuffer.duration);
         });
 
-        // Initialize time display
-        this.updateTimeDisplay(0, duration);
+        // Initialize time display (estimate)
+        const estimatedDuration = this.currentData.data.size / (48000 * 2); // Rough estimate
+        this.updateTimeDisplay(0, estimatedDuration);
         
         // Start update loop
         this.startAudioUpdateLoop();

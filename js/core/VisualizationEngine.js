@@ -172,7 +172,15 @@ class WaveformViz {
         this.lastTime = 0;
         this.playheadPosition = 0; // Current playback position (0-1)
         
-        if (gl && gl.createShader) {
+        // Extract channel data if it exists, otherwise use placeholder
+        if (data.data.channels) {
+            this.hasChannelData = true;
+        } else {
+            this.hasChannelData = false;
+            console.log('⚠️ Waveform: Channel data not yet decoded');
+        }
+        
+        if (gl && gl.createShader && this.hasChannelData) {
             this.initWebGLBuffers();
         }
     }

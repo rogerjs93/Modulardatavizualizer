@@ -114,33 +114,23 @@ export class UniversalDataAdapter {
      */
     async parseAudio(file) {
         const arrayBuffer = await file.arrayBuffer();
-        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
         
-        try {
-            const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-            
-            const channels = [];
-            for (let i = 0; i < audioBuffer.numberOfChannels; i++) {
-                channels.push(audioBuffer.getChannelData(i));
-            }
+        // Don't create AudioContext here - will be created on user interaction
+        // Just store the raw array buffer for later decoding
+        console.log(`🎵 Audio file loaded: ${file.name} (${(arrayBuffer.byteLength / 1024 / 1024).toFixed(2)} MB)`);
+        
+        // Estimate duration (very rough)
+        const estimatedDuration = arrayBuffer.byteLength / (48000 * 2 * 2); // Assume 48kHz stereo 16-bit
+        
+        this.metadata.estimatedDuration = estimatedDuration;
+        this.metadata.channels = 2; // Will be updated after decoding
 
-            this.metadata.sampleRate = audioBuffer.sampleRate;
-            this.metadata.duration = audioBuffer.duration;
-            this.metadata.channels = audioBuffer.numberOfChannels;
-
-            console.log(`🎵 Audio: ${audioBuffer.numberOfChannels} channels, ${audioBuffer.sampleRate}Hz, ${audioBuffer.duration.toFixed(2)}s`);
-
-            return {
-                type: 'audio',
-                channels: channels,
-                sampleRate: audioBuffer.sampleRate,
-                duration: audioBuffer.duration,
-                length: audioBuffer.length
-            };
-        } catch (error) {
-            console.error('Error decoding audio:', error);
-            throw error;
-        }
+        return {
+            type: 'audio',
+            arrayBuffer: arrayBuffer,
+            filename: file.name,
+            size: arrayBuffer.byteLength
+        };
     }
 
     /**
