@@ -8,6 +8,8 @@
  * - Audio (WAV, MP3, OGG, FLAC)
  * - EEG/MEG (EDF, BDF, FIF, CSV)
  * - Neuroimaging (NIfTI, DICOM)
+ * - 3D Meshes (OBJ, STL, PLY, glTF/GLB)
+ * - Point Clouds (XYZ, PCD, CSV with coordinates)
  * - Time series (CSV, JSON, TSV)
  * - Images (PNG, JPG, TIFF)
  * - Generic binary data
@@ -19,6 +21,8 @@ export class UniversalDataAdapter {
             audio: ['.wav', '.mp3', '.ogg', '.flac', '.m4a'],
             eeg: ['.edf', '.bdf', '.fif', '.set', '.csv', '.txt'],
             neuroimaging: ['.nii', '.nii.gz', '.dcm', '.dicom'],
+            mesh3d: ['.obj', '.stl', '.ply', '.gltf', '.glb'],
+            pointcloud: ['.xyz', '.pcd', '.pts', '.asc'],
             timeseries: ['.csv', '.tsv', '.json', '.txt'],
             image: ['.png', '.jpg', '.jpeg', '.tiff', '.bmp'],
             video: ['.mp4', '.webm', '.avi'],
@@ -62,6 +66,12 @@ export class UniversalDataAdapter {
                 break;
             case 'neuroimaging':
                 parsedData = await this.parseNeuroimaging(file, extension);
+                break;
+            case 'mesh3d':
+                parsedData = await this.parse3DMesh(file, extension);
+                break;
+            case 'pointcloud':
+                parsedData = await this.parsePointCloud(file, extension);
                 break;
             case 'timeseries':
                 parsedData = await this.parseTimeSeries(file, extension);
@@ -295,6 +305,400 @@ export class UniversalDataAdapter {
     }
 
     /**
+     * Parse 3D mesh files (OBJ, STL, PLY, glTF/GLB)
+     */
+    async parse3DMesh(file, extension) {
+        if (extension === '.obj') {
+            return await this.parseOBJ(file);
+        } else if (extension === '.stl') {
+            return await this.parseSTL(file);
+        } else if (extension === '.ply') {
+            return await this.parsePLY(file);
+        } else if (extension === '.gltf' || extension === '.glb') {
+            return await this.parseGLTF(file, extension);
+        } else {
+            throw new Error(`3D mesh format ${extension} not yet implemented`);
+        }
+    }
+
+    /**
+     * Parse OBJ file format (Wavefront)
+     */
+    async parseOBJ(file) {
+        const text = await file.text();
+        const lines = text.split('\n');
+        
+        const vertices = [];
+        const normals = [];
+        const texcoords = [];
+        const faces = [];
+        
+        for (const line of lines) {
+            const parts = line.trim().split(/\s+/);
+            const type = parts[0];
+            
+            if (type === 'v') {
+                // Vertex position
+                vertices.push([
+                    parseFloat(parts[1]),
+                    parseFloat(parts[2]),
+                    parseFloat(parts[3])
+                ]);
+            } else if (type === 'vn') {
+                // Vertex normal
+                normals.push([
+                    parseFloat(parts[1]),
+                    parseFloat(parts[2]),
+                    parseFloat(parts[3])
+                ]);
+            } else if (type === 'vt') {
+                // Texture coordinate
+                texcoords.push([
+                    parseFloat(parts[1]),
+                    parseFloat(parts[2])
+                ]);
+            } else if (type === 'f') {
+                // Face (triangle or quad)
+                const face = [];
+                for (let i = 1; i < parts.length; i++) {
+                    const indices = parts[i].split('/');
+                    face.push({
+                        v: parseInt(indices[0]) - 1,  // OBJ indices start at 1
+                        vt: indices[1] ? parseInt(indices[1]) - 1 : null,
+                        vn: indices[2] ? parseInt(indices[2]) - 1 : null
+                    });
+                }
+                faces.push(face);
+            }
+        }
+
+        console.log(`📐 OBJ: ${vertices.length} vertices, ${faces.length} faces`);
+
+        this.metadata.vertexCount = vertices.length;
+        this.metadata.faceCount = faces.length;
+
+        return {
+            type: 'mesh3d',
+            format: 'obj',
+            vertices: vertices,
+            normals: normals,
+            texcoords: texcoords,
+            faces: faces
+        };
+    }
+
+    /**
+     * Parse STL file format (ASCII or Binary)
+     */
+    async parseSTL(file) {
+        const text = await file.text();
+        
+        // Check if ASCII or Binary
+        if (text.toLowerCase().startsWith('solid')) {
+            return await this.parseSTLAscii(text);
+        } else {
+            // Binary STL
+            const arrayBuffer = await file.arrayBuffer();
+            return await this.parseSTLBinary(arrayBuffer);
+        }
+    }
+
+    /**
+     * Parse ASCII STL
+     */
+    async parseSTLAscii(text) {
+        const lines = text.split('\n');
+        const vertices = [];
+        const normals = [];
+        
+        let currentNormal = null;
+        let vertexBuffer = [];
+        
+        for (const line of lines) {
+            const trimmed = line.trim().toLowerCase();
+            
+            if (trimmed.startsWith('facet normal')) {
+                const parts = trimmed.split(/\s+/);
+                currentNormal = [
+                    parseFloat(parts[2]),
+                    parseFloat(parts[3]),
+                    parseFloat(parts[4])
+                ];
+            } else if (trimmed.startsWith('vertex')) {
+                const parts = trimmed.split(/\s+/);
+                const vertex = [
+                    parseFloat(parts[1]),
+                    parseFloat(parts[2]),
+                    parseFloat(parts[3])
+                ];
+                vertices.push(vertex);
+                normals.push(currentNormal);
+            }
+        }
+
+        console.log(`📐 STL (ASCII): ${vertices.length} vertices, ${vertices.length / 3} triangles`);
+
+        this.metadata.vertexCount = vertices.length;
+        this.metadata.triangleCount = vertices.length / 3;
+
+        return {
+            type: 'mesh3d',
+            format: 'stl',
+            vertices: vertices,
+            normals: normals,
+            triangleCount: vertices.length / 3
+        };
+    }
+
+    /**
+     * Parse Binary STL
+     */
+    async parseSTLBinary(arrayBuffer) {
+        const dataView = new DataView(arrayBuffer);
+        
+        // Skip 80-byte header
+        const triangleCount = dataView.getUint32(80, true);
+        
+        const vertices = [];
+        const normals = [];
+        
+        let offset = 84; // After header and count
+        
+        for (let i = 0; i < triangleCount; i++) {
+            // Normal vector
+            const normal = [
+                dataView.getFloat32(offset, true),
+                dataView.getFloat32(offset + 4, true),
+                dataView.getFloat32(offset + 8, true)
+            ];
+            offset += 12;
+            
+            // 3 vertices
+            for (let j = 0; j < 3; j++) {
+                vertices.push([
+                    dataView.getFloat32(offset, true),
+                    dataView.getFloat32(offset + 4, true),
+                    dataView.getFloat32(offset + 8, true)
+                ]);
+                normals.push(normal);
+                offset += 12;
+            }
+            
+            // Skip attribute byte count
+            offset += 2;
+        }
+
+        console.log(`📐 STL (Binary): ${vertices.length} vertices, ${triangleCount} triangles`);
+
+        this.metadata.vertexCount = vertices.length;
+        this.metadata.triangleCount = triangleCount;
+
+        return {
+            type: 'mesh3d',
+            format: 'stl',
+            vertices: vertices,
+            normals: normals,
+            triangleCount: triangleCount
+        };
+    }
+
+    /**
+     * Parse PLY file format (ASCII or Binary)
+     */
+    async parsePLY(file) {
+        const text = await file.text();
+        const lines = text.split('\n');
+        
+        let format = 'ascii';
+        let vertexCount = 0;
+        let faceCount = 0;
+        let headerEnd = 0;
+        
+        // Parse header
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i].trim();
+            
+            if (line.startsWith('format')) {
+                format = line.split(/\s+/)[1];
+            } else if (line.startsWith('element vertex')) {
+                vertexCount = parseInt(line.split(/\s+/)[2]);
+            } else if (line.startsWith('element face')) {
+                faceCount = parseInt(line.split(/\s+/)[2]);
+            } else if (line === 'end_header') {
+                headerEnd = i + 1;
+                break;
+            }
+        }
+
+        const vertices = [];
+        const faces = [];
+        
+        // Parse vertices
+        for (let i = 0; i < vertexCount; i++) {
+            const parts = lines[headerEnd + i].trim().split(/\s+/);
+            vertices.push([
+                parseFloat(parts[0]),
+                parseFloat(parts[1]),
+                parseFloat(parts[2])
+            ]);
+        }
+        
+        // Parse faces
+        for (let i = 0; i < faceCount; i++) {
+            const parts = lines[headerEnd + vertexCount + i].trim().split(/\s+/);
+            const vertexIndices = parts.slice(1).map(x => parseInt(x));
+            faces.push(vertexIndices);
+        }
+
+        console.log(`📐 PLY: ${vertices.length} vertices, ${faces.length} faces`);
+
+        this.metadata.vertexCount = vertices.length;
+        this.metadata.faceCount = faces.length;
+
+        return {
+            type: 'mesh3d',
+            format: 'ply',
+            vertices: vertices,
+            faces: faces
+        };
+    }
+
+    /**
+     * Parse glTF/GLB files (basic support)
+     */
+    async parseGLTF(file, extension) {
+        if (extension === '.gltf') {
+            const text = await file.text();
+            const gltf = JSON.parse(text);
+            
+            console.log(`📐 glTF: ${gltf.meshes ? gltf.meshes.length : 0} meshes`);
+            
+            return {
+                type: 'mesh3d',
+                format: 'gltf',
+                gltf: gltf
+            };
+        } else {
+            // GLB binary format
+            const arrayBuffer = await file.arrayBuffer();
+            
+            console.log(`📐 GLB: Binary format`);
+            
+            return {
+                type: 'mesh3d',
+                format: 'glb',
+                buffer: arrayBuffer
+            };
+        }
+    }
+
+    /**
+     * Parse point cloud files (XYZ, PCD, CSV with coordinates)
+     */
+    async parsePointCloud(file, extension) {
+        if (extension === '.xyz' || extension === '.pts' || extension === '.asc') {
+            return await this.parseXYZ(file);
+        } else if (extension === '.pcd') {
+            return await this.parsePCD(file);
+        } else {
+            throw new Error(`Point cloud format ${extension} not yet implemented`);
+        }
+    }
+
+    /**
+     * Parse XYZ point cloud format
+     */
+    async parseXYZ(file) {
+        const text = await file.text();
+        const lines = text.split('\n').filter(line => line.trim());
+        
+        const points = [];
+        const colors = [];
+        
+        for (const line of lines) {
+            const parts = line.trim().split(/\s+/).map(parseFloat);
+            
+            if (parts.length >= 3) {
+                points.push([parts[0], parts[1], parts[2]]);
+                
+                // Optional RGB colors
+                if (parts.length >= 6) {
+                    colors.push([parts[3], parts[4], parts[5]]);
+                }
+            }
+        }
+
+        console.log(`☁️ Point Cloud: ${points.length} points`);
+
+        this.metadata.pointCount = points.length;
+        this.metadata.hasColors = colors.length > 0;
+
+        return {
+            type: 'pointcloud',
+            format: 'xyz',
+            points: points,
+            colors: colors.length > 0 ? colors : null,
+            pointCount: points.length
+        };
+    }
+
+    /**
+     * Parse PCD (Point Cloud Data) format
+     */
+    async parsePCD(file) {
+        const text = await file.text();
+        const lines = text.split('\n');
+        
+        let pointCount = 0;
+        let dataStart = 0;
+        let fields = [];
+        
+        // Parse header
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i].trim();
+            
+            if (line.startsWith('FIELDS')) {
+                fields = line.split(/\s+/).slice(1);
+            } else if (line.startsWith('POINTS')) {
+                pointCount = parseInt(line.split(/\s+/)[1]);
+            } else if (line.startsWith('DATA')) {
+                dataStart = i + 1;
+                break;
+            }
+        }
+
+        const points = [];
+        const colors = [];
+        
+        for (let i = 0; i < pointCount && (dataStart + i) < lines.length; i++) {
+            const parts = lines[dataStart + i].trim().split(/\s+/).map(parseFloat);
+            
+            if (parts.length >= 3) {
+                points.push([parts[0], parts[1], parts[2]]);
+                
+                // Check for RGB
+                if (fields.includes('rgb') && parts.length >= 4) {
+                    colors.push([parts[3], parts[4], parts[5]]);
+                }
+            }
+        }
+
+        console.log(`☁️ PCD: ${points.length} points`);
+
+        this.metadata.pointCount = points.length;
+        this.metadata.hasColors = colors.length > 0;
+
+        return {
+            type: 'pointcloud',
+            format: 'pcd',
+            points: points,
+            colors: colors.length > 0 ? colors : null,
+            fields: fields,
+            pointCount: points.length
+        };
+    }
+
+    /**
      * Parse time series data (CSV, JSON)
      */
     async parseTimeSeries(file, extension) {
@@ -452,6 +856,10 @@ export class UniversalDataAdapter {
                 return 'timeseries';
             case 'neuroimaging':
                 return '3d-brain';
+            case 'mesh3d':
+                return '3d-mesh';
+            case 'pointcloud':
+                return '3d-pointcloud';
             case 'image':
                 return 'heatmap';
             case 'timeseries':

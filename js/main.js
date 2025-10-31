@@ -165,48 +165,195 @@ class ModularDataVisualizer {
     }
 
     /**
-     * Update parameter controls dynamically
+     * Update parameter controls dynamically based on data type
      */
     updateParameterControls(params) {
         const container = document.getElementById('parameterControls');
         container.innerHTML = '';
+
+        // Determine control layout based on data type
+        const dataType = this.currentData?.metadata.type;
+        this.applyDynamicUILayout(dataType);
 
         Object.entries(params).forEach(([key, config]) => {
             const group = document.createElement('div');
             group.className = 'param-group';
 
             const label = document.createElement('label');
-            label.innerHTML = `${config.label} <span class="param-value" id="${key}-value">${config.value}</span>`;
-
-            const input = document.createElement('input');
-            input.type = 'range';
-            input.id = key;
-            input.min = config.min;
-            input.max = config.max;
-            input.step = config.step;
-            input.value = config.value;
-
-            input.addEventListener('input', (e) => {
-                const value = parseFloat(e.target.value);
-                document.getElementById(`${key}-value`).textContent = value.toFixed(2);
+            
+            // Handle different control types
+            if (config.type === 'checkbox') {
+                // Checkbox control
+                const input = document.createElement('input');
+                input.type = 'checkbox';
+                input.id = key;
+                input.checked = config.value;
                 
-                // Update visualization
-                this.vizEngine.updateParameters({ [key]: value });
+                input.addEventListener('change', (e) => {
+                    this.vizEngine.updateParameters({ [key]: e.target.checked });
+                    this.updateState(key, e.target.checked);
+                });
                 
-                // Update state
-                const currentParams = this.stateManager.getState().parameters;
-                currentParams[key].value = value;
-                this.stateManager.setState(
-                    this.stateManager.getState().vizType,
-                    currentParams,
-                    this.stateManager.getState().metadata
-                );
-            });
+                label.appendChild(input);
+                label.appendChild(document.createTextNode(' ' + config.label));
+                group.appendChild(label);
+                
+            } else if (config.type === 'select') {
+                // Dropdown select control
+                label.textContent = config.label + ': ';
+                const select = document.createElement('select');
+                select.id = key;
+                
+                config.options.forEach(opt => {
+                    const option = document.createElement('option');
+                    option.value = opt;
+                    option.textContent = opt.charAt(0).toUpperCase() + opt.slice(1);
+                    if (opt === config.value) option.selected = true;
+                    select.appendChild(option);
+                });
+                
+                select.addEventListener('change', (e) => {
+                    this.vizEngine.updateParameters({ [key]: e.target.value });
+                    this.updateState(key, e.target.value);
+                });
+                
+                group.appendChild(label);
+                group.appendChild(select);
+                
+            } else {
+                // Range slider control
+                label.innerHTML = `${config.label} <span class="param-value" id="${key}-value">${config.value}</span>`;
 
-            group.appendChild(label);
-            group.appendChild(input);
+                const input = document.createElement('input');
+                input.type = 'range';
+                input.id = key;
+                input.min = config.min;
+                input.max = config.max;
+                input.step = config.step;
+                input.value = config.value;
+
+                input.addEventListener('input', (e) => {
+                    const value = parseFloat(e.target.value);
+                    document.getElementById(`${key}-value`).textContent = value.toFixed(2);
+                    this.vizEngine.updateParameters({ [key]: value });
+                    this.updateState(key, value);
+                });
+
+                group.appendChild(label);
+                group.appendChild(input);
+            }
+            
             container.appendChild(group);
         });
+    }
+
+    /**
+     * Apply dynamic UI layout based on data type
+     */
+    applyDynamicUILayout(dataType) {
+        const controlPanel = document.querySelector('.control-panel');
+        
+        // Remove existing layout classes
+        controlPanel.classList.remove('audio-layout', 'layout-3d', 'timeseries-layout', 'brain-layout');
+        
+        // Apply data-type specific layout
+        if (dataType === 'audio') {
+            controlPanel.classList.add('audio-layout');
+            this.showAudioControls();
+        } else if (dataType === 'mesh3d' || dataType === 'pointcloud') {
+            controlPanel.classList.add('layout-3d');
+            this.show3DControls();
+        } else if (dataType === 'nifti') {
+            controlPanel.classList.add('brain-layout');
+            this.showBrainControls();
+        } else if (dataType === 'timeseries' || dataType === 'eeg') {
+            controlPanel.classList.add('timeseries-layout');
+            this.showTimeseriesControls();
+        }
+    }
+
+    /**
+     * Show audio-specific controls
+     */
+    showAudioControls() {
+        // Add audio transport controls (play/pause, timeline scrubber)
+        const container = document.getElementById('parameterControls');
+        const audioControls = document.createElement('div');
+        audioControls.className = 'audio-transport';
+        audioControls.innerHTML = `
+            <div class="transport-buttons">
+                <button id="playPause" class="btn-icon">▶️</button>
+                <button id="stop" class="btn-icon">⏹️</button>
+            </div>
+            <div class="timeline">
+                <input type="range" id="audioTimeline" min="0" max="100" value="0" class="timeline-slider">
+                <span id="timeDisplay">0:00 / 0:00</span>
+            </div>
+        `;
+        container.insertBefore(audioControls, container.firstChild);
+    }
+
+    /**
+     * Show 3D navigation controls
+     */
+    show3DControls() {
+        const container = document.getElementById('parameterControls');
+        const nav3D = document.createElement('div');
+        nav3D.className = 'nav-3d';
+        nav3D.innerHTML = `
+            <div class="nav-hint">
+                <strong>🖱️ 3D Navigation</strong><br>
+                <small>Auto-rotating • Use parameters below to adjust</small>
+            </div>
+        `;
+        container.insertBefore(nav3D, container.firstChild);
+    }
+
+    /**
+     * Show brain-specific controls
+     */
+    showBrainControls() {
+        const container = document.getElementById('parameterControls');
+        const brainNav = document.createElement('div');
+        brainNav.className = 'brain-navigation';
+        brainNav.innerHTML = `
+            <div class="nav-hint">
+                <strong>🧠 Brain Volume Navigation</strong><br>
+                <small>Use slice controls to navigate through volume</small>
+            </div>
+        `;
+        container.insertBefore(brainNav, container.firstChild);
+    }
+
+    /**
+     * Show timeseries controls
+     */
+    showTimeseriesControls() {
+        const container = document.getElementById('parameterControls');
+        const timeControls = document.createElement('div');
+        timeControls.className = 'timeseries-controls';
+        timeControls.innerHTML = `
+            <div class="nav-hint">
+                <strong>📊 Time Series</strong><br>
+                <small>Adjust visualization parameters below</small>
+            </div>
+        `;
+        container.insertBefore(timeControls, container.firstChild);
+    }
+
+    /**
+     * Helper to update state
+     */
+    updateState(key, value) {
+        const currentParams = this.stateManager.getState().parameters;
+        if (currentParams[key]) {
+            currentParams[key].value = value;
+            this.stateManager.setState(
+                this.stateManager.getState().vizType,
+                currentParams,
+                this.stateManager.getState().metadata
+            );
+        }
     }
 
     /**
