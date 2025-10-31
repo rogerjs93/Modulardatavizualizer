@@ -8,17 +8,20 @@ import { UniversalDataAdapter } from './core/UniversalDataAdapter.js';
 import { VisualizationEngine } from './core/VisualizationEngine.js';
 import { StateManager } from './core/StateManager.js';
 import { QRGenerator } from './utils/QRGenerator.js';
+import { DataSharing } from './utils/DataSharing.js';
 
 class ModularDataVisualizer {
     constructor() {
         this.adapter = new UniversalDataAdapter();
         this.stateManager = new StateManager();
         this.qrGenerator = new QRGenerator();
+        this.dataSharing = new DataSharing();
         
         this.canvas = document.getElementById('mainCanvas');
         this.vizEngine = new VisualizationEngine(this.canvas);
         
         this.currentData = null;
+        this.currentFile = null;
         this.initUI();
         this.checkURLState();
     }
@@ -81,6 +84,9 @@ class ModularDataVisualizer {
         try {
             // Show loading state
             this.showStatus('Loading file...', 'loading');
+
+            // Store original file for sharing
+            this.currentFile = file;
 
             // Load and parse file
             this.currentData = await this.adapter.loadFile(file);
@@ -386,13 +392,47 @@ class ModularDataVisualizer {
      * Generate QR code for current state
      */
     async generateQRCode() {
-        const url = this.stateManager.generateShareableURL();
+        if (!this.currentData || !this.currentFile) {
+            alert('Please load a file first!');
+            return;
+        }
+
         const container = document.getElementById('qrContainer');
-        
         container.classList.add('active');
-        await this.qrGenerator.generate(url, container);
-        
-        console.log('🔗 Shareable URL:', url);
+        container.innerHTML = '<p>📤 Uploading to GitHub Gist...</p>';
+
+        try {
+            // Upload to Gist and get shareable URL
+            const vizState = this.stateManager.getState();
+            const shareURL = await this.dataSharing.uploadToGist(
+                this.currentData, 
+                this.currentFile, 
+                vizState
+            );
+            
+            // Generate QR code with the short URL
+            await this.qrGenerator.generate(shareURL, container);
+            
+            // Add copy button
+            const copyBtn = document.createElement('button');
+            copyBtn.textContent = '📋 Copy Link';
+            copyBtn.className = 'copy-link-btn';
+            copyBtn.onclick = () => {
+                navigator.clipboard.writeText(shareURL);
+                copyBtn.textContent = '✅ Copied!';
+                setTimeout(() => copyBtn.textContent = '📋 Copy Link', 2000);
+            };
+            container.appendChild(copyBtn);
+            
+            console.log('✅ Shareable URL:', shareURL);
+
+        } catch (error) {
+            console.error('❌ Sharing error:', error);
+            container.innerHTML = `
+                <p style="color: #ef4444;">❌ ${error.message}</p>
+                <button onclick="this.parentElement.classList.remove('active')">Close</button>
+            `;
+        }
     }
 
     /**
