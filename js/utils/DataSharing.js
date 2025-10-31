@@ -22,18 +22,36 @@ export class DataSharing {
             console.log('📤 Uploading to GitHub Gist...');
 
             // Create file content
-            const fileContent = this.serializeDataFile(data, originalFile);
+            let fileContent = this.serializeDataFile(data, originalFile);
+            
+            // Try to compress if content is large
+            let isCompressed = false;
+            if (fileContent.length > 100000) { // Compress if > 100KB
+                try {
+                    const compressed = await this.compressString(fileContent);
+                    if (compressed.length < fileContent.length * 0.8) { // Only use if 20%+ reduction
+                        fileContent = compressed;
+                        isCompressed = true;
+                        console.log(`🗜️ Compressed: ${this.formatBytes(fileContent.length)} (${((1 - compressed.length / fileContent.length) * 100).toFixed(1)}% reduction)`);
+                    }
+                } catch (compressError) {
+                    console.warn('⚠️ Compression failed, using uncompressed:', compressError);
+                }
+            }
             
             // Create Gist payload
             const gistData = {
                 description: `Modular Data Visualizer - ${originalFile.name}`,
                 public: true,
                 files: {
-                    [originalFile.name]: {
+                    [originalFile.name + (isCompressed ? '.gz.b64' : '')]: {
                         content: fileContent
                     },
                     'viz-state.json': {
-                        content: JSON.stringify(vizState, null, 2)
+                        content: JSON.stringify({
+                            ...vizState,
+                            _compressed: isCompressed
+                        }, null, 2)
                     },
                     'README.md': {
                         content: this.generateReadme(originalFile, vizState)
@@ -81,7 +99,7 @@ export class DataSharing {
                 return this.uploadToLocalStorage(data, originalFile, vizState);
             }
             
-            throw new Error('File too large for sharing. Please use the export/import feature instead.');
+            throw new Error('File too large for sharing. Try a smaller file or use export/import instead.');
         }
     }
 
@@ -192,20 +210,34 @@ This file was shared using the Modular Data Visualizer - a browser-based tool fo
             throw new Error('No data file found in Gist');
         }
 
-        // Parse data content
-        const dataContent = files[dataFile].content;
-        const data = JSON.parse(dataContent);
-
         // Parse viz state
         let vizState = null;
+        let isCompressed = false;
         if (files['viz-state.json']) {
             vizState = JSON.parse(files['viz-state.json'].content);
+            isCompressed = vizState._compressed || false;
         }
+
+        // Parse data content (decompress if needed)
+        let dataContent = files[dataFile].content;
+        
+        if (isCompressed || dataFile.endsWith('.gz.b64')) {
+            console.log('🗜️ Decompressing data...');
+            try {
+                dataContent = await this.decompressString(dataContent);
+                console.log('✅ Decompressed successfully');
+            } catch (error) {
+                console.error('❌ Decompression failed:', error);
+                throw new Error('Failed to decompress shared data');
+            }
+        }
+        
+        const data = JSON.parse(dataContent);
 
         return {
             data: data,
             vizState: vizState,
-            filename: dataFile,
+            filename: dataFile.replace('.gz.b64', ''),
             gistUrl: gist.html_url
         };
     }
@@ -278,6 +310,98 @@ This file was shared using the Modular Data Visualizer - a browser-based tool fo
         const sizes = ['Bytes', 'KB', 'MB', 'GB'];
         const i = Math.floor(Math.log(bytes) / Math.log(k));
         return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+    }
+
+    /**
+     * Compress string using gzip and encode as base64
+     */
+    async compressString(str) {
+        // Convert string to Uint8Array
+        const encoder = new TextEncoder();
+        const data = encoder.encode(str);
+        
+        // Create compression stream
+        const stream = new ReadableStream({
+            start(controller) {
+                controller.enqueue(data);
+                controller.close();
+            }
+        });
+        
+        // Compress using gzip
+        const compressedStream = stream.pipeThrough(new CompressionStream('gzip'));
+        
+        // Read compressed data
+        const reader = compressedStream.getReader();
+        const chunks = [];
+        
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            chunks.push(value);
+        }
+        
+        // Combine chunks
+        const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+        const compressed = new Uint8Array(totalLength);
+        let offset = 0;
+        for (const chunk of chunks) {
+            compressed.set(chunk, offset);
+            offset += chunk.length;
+        }
+        
+        // Convert to base64
+        let binary = '';
+        for (let i = 0; i < compressed.length; i++) {
+            binary += String.fromCharCode(compressed[i]);
+        }
+        return btoa(binary);
+    }
+
+    /**
+     * Decompress base64-encoded gzipped string
+     */
+    async decompressString(base64Str) {
+        // Decode base64
+        const binary = atob(base64Str);
+        const compressed = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) {
+            compressed[i] = binary.charCodeAt(i);
+        }
+        
+        // Create decompression stream
+        const stream = new ReadableStream({
+            start(controller) {
+                controller.enqueue(compressed);
+                controller.close();
+            }
+        });
+        
+        // Decompress using gzip
+        const decompressedStream = stream.pipeThrough(new DecompressionStream('gzip'));
+        
+        // Read decompressed data
+        const reader = decompressedStream.getReader();
+        const chunks = [];
+        
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            chunks.push(value);
+        }
+        
+        // Combine chunks
+        const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+        const decompressed = new Uint8Array(totalLength);
+        let offset = 0;
+        for (const chunk of chunks) {
+            decompressed.set(chunk, offset);
+            offset += chunk.length;
+        }
+        
+        // Convert back to string
+        const decoder = new TextDecoder();
+        return decoder.decode(decompressed);
     }
 
     /**
