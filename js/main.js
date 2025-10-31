@@ -297,6 +297,197 @@ class ModularDataVisualizer {
             </div>
         `;
         container.insertBefore(audioControls, container.firstChild);
+        
+        // Initialize audio playback
+        this.initAudioPlayback();
+    }
+
+    /**
+     * Initialize audio playback functionality
+     */
+    initAudioPlayback() {
+        if (!this.currentData || this.currentData.metadata.type !== 'audio') {
+            return;
+        }
+
+        // Create AudioContext if not exists
+        if (!this.audioContext) {
+            this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        }
+
+        // Store audio data
+        this.audioBuffer = this.currentData.data;
+        this.audioSource = null;
+        this.isPlaying = false;
+        this.startTime = 0;
+        this.pauseTime = 0;
+
+        // Get UI elements
+        const playPauseBtn = document.getElementById('playPause');
+        const stopBtn = document.getElementById('stop');
+        const timeline = document.getElementById('audioTimeline');
+        const timeDisplay = document.getElementById('timeDisplay');
+
+        // Update timeline max value
+        const duration = this.audioBuffer.duration;
+        timeline.max = duration;
+
+        // Play/Pause button
+        playPauseBtn.addEventListener('click', () => {
+            if (this.isPlaying) {
+                this.pauseAudio();
+                playPauseBtn.textContent = '▶️';
+            } else {
+                this.playAudio();
+                playPauseBtn.textContent = '⏸️';
+            }
+        });
+
+        // Stop button
+        stopBtn.addEventListener('click', () => {
+            this.stopAudio();
+            playPauseBtn.textContent = '▶️';
+            timeline.value = 0;
+            this.updateTimeDisplay(0, duration);
+        });
+
+        // Timeline scrubber
+        timeline.addEventListener('input', (e) => {
+            const time = parseFloat(e.target.value);
+            this.seekAudio(time);
+            this.updateTimeDisplay(time, duration);
+        });
+
+        // Initialize time display
+        this.updateTimeDisplay(0, duration);
+        
+        // Start update loop
+        this.startAudioUpdateLoop();
+    }
+
+    /**
+     * Play audio
+     */
+    playAudio() {
+        if (!this.audioBuffer || !this.audioContext) return;
+
+        // Stop any existing source
+        if (this.audioSource) {
+            this.audioSource.stop();
+        }
+
+        // Create new source
+        this.audioSource = this.audioContext.createBufferSource();
+        this.audioSource.buffer = this.audioBuffer;
+        this.audioSource.connect(this.audioContext.destination);
+
+        // Start from pause time or beginning
+        const offset = this.pauseTime;
+        this.audioSource.start(0, offset);
+        this.startTime = this.audioContext.currentTime - offset;
+        this.isPlaying = true;
+
+        // Handle end of audio
+        this.audioSource.onended = () => {
+            if (this.isPlaying) {
+                this.stopAudio();
+                const playPauseBtn = document.getElementById('playPause');
+                if (playPauseBtn) playPauseBtn.textContent = '▶️';
+            }
+        };
+    }
+
+    /**
+     * Pause audio
+     */
+    pauseAudio() {
+        if (!this.audioSource || !this.isPlaying) return;
+
+        this.pauseTime = this.audioContext.currentTime - this.startTime;
+        this.audioSource.stop();
+        this.audioSource = null;
+        this.isPlaying = false;
+    }
+
+    /**
+     * Stop audio
+     */
+    stopAudio() {
+        if (this.audioSource) {
+            this.audioSource.stop();
+            this.audioSource = null;
+        }
+        this.isPlaying = false;
+        this.pauseTime = 0;
+        this.startTime = 0;
+    }
+
+    /**
+     * Seek to specific time
+     */
+    seekAudio(time) {
+        const wasPlaying = this.isPlaying;
+        
+        if (this.isPlaying) {
+            this.stopAudio();
+        }
+
+        this.pauseTime = time;
+
+        if (wasPlaying) {
+            this.playAudio();
+        }
+    }
+
+    /**
+     * Start audio update loop
+     */
+    startAudioUpdateLoop() {
+        const updateLoop = () => {
+            if (this.currentData && this.currentData.metadata.type === 'audio') {
+                const timeline = document.getElementById('audioTimeline');
+                const timeDisplay = document.getElementById('timeDisplay');
+                
+                if (timeline && timeDisplay && this.audioBuffer) {
+                    const currentTime = this.isPlaying 
+                        ? this.audioContext.currentTime - this.startTime
+                        : this.pauseTime;
+                    
+                    const duration = this.audioBuffer.duration;
+                    
+                    // Update timeline
+                    timeline.value = Math.min(currentTime, duration);
+                    
+                    // Update time display
+                    this.updateTimeDisplay(currentTime, duration);
+                    
+                    // Update visualization sync
+                    if (this.vizEngine && this.vizEngine.currentViz && this.vizEngine.currentViz.updatePlayhead) {
+                        this.vizEngine.currentViz.updatePlayhead(currentTime);
+                    }
+                }
+                
+                requestAnimationFrame(updateLoop);
+            }
+        };
+        
+        updateLoop();
+    }
+
+    /**
+     * Update time display
+     */
+    updateTimeDisplay(current, total) {
+        const timeDisplay = document.getElementById('timeDisplay');
+        if (!timeDisplay) return;
+
+        const formatTime = (seconds) => {
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${mins}:${secs.toString().padStart(2, '0')}`;
+        };
+
+        timeDisplay.textContent = `${formatTime(current)} / ${formatTime(total)}`;
     }
 
     /**

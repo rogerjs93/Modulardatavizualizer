@@ -170,10 +170,19 @@ class WaveformViz {
         
         this.fps = 60;
         this.lastTime = 0;
+        this.playheadPosition = 0; // Current playback position (0-1)
         
         if (gl && gl.createShader) {
             this.initWebGLBuffers();
         }
+    }
+
+    /**
+     * Update playhead position (called from audio playback)
+     */
+    updatePlayhead(currentTime) {
+        const duration = this.data.metadata.duration || 1;
+        this.playheadPosition = currentTime / duration;
     }
 
     initWebGLBuffers() {
@@ -288,6 +297,26 @@ class WaveformViz {
             else ctx.lineTo(x, y);
         }
         ctx.stroke();
+        
+        // Draw playhead indicator
+        if (this.playheadPosition > 0) {
+            const playheadX = this.playheadPosition * canvas.width;
+            
+            ctx.strokeStyle = '#10b981';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([5, 5]);
+            ctx.beginPath();
+            ctx.moveTo(playheadX, 0);
+            ctx.lineTo(playheadX, canvas.height);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            
+            // Draw playhead time
+            ctx.fillStyle = '#10b981';
+            ctx.font = '12px monospace';
+            const time = (this.playheadPosition * (this.data.metadata.duration || 0)).toFixed(2);
+            ctx.fillText(`${time}s`, playheadX + 5, 20);
+        }
     }
 
     updateParameters(params) {
