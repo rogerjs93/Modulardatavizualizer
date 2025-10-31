@@ -302,8 +302,12 @@ class ModularDataVisualizer {
         nav3D.className = 'nav-3d';
         nav3D.innerHTML = `
             <div class="nav-hint">
-                <strong>🖱️ 3D Navigation</strong><br>
-                <small>Auto-rotating • Use parameters below to adjust</small>
+                <strong>🖱️ 3D Mouse Controls</strong><br>
+                <small>
+                    🖱️ <strong>Drag</strong> to rotate<br>
+                    🔍 <strong>Scroll</strong> to zoom<br>
+                    📱 <strong>Pinch</strong> to zoom (touch)
+                </small>
             </div>
         `;
         container.insertBefore(nav3D, container.firstChild);

@@ -416,9 +416,118 @@ class Mesh3DViz {
         this.lastTime = 0;
         this.rotation = 0;
         
+        // Mouse interaction state
+        this.isDragging = false;
+        this.lastMouseX = 0;
+        this.lastMouseY = 0;
+        this.userRotationX = 0;
+        this.userRotationY = 0;
+        this.userScale = 1.0;
+        
         if (gl && gl.createShader) {
             this.initWebGL3D();
+            this.initMouseControls();
         }
+    }
+
+    /**
+     * Initialize mouse controls for 3D interaction
+     */
+    initMouseControls() {
+        const canvas = this.gl.canvas;
+        
+        // Mouse down - start dragging
+        canvas.addEventListener('mousedown', (e) => {
+            this.isDragging = true;
+            this.lastMouseX = e.clientX;
+            this.lastMouseY = e.clientY;
+            canvas.style.cursor = 'grabbing';
+            
+            // Disable auto-rotate when user interacts
+            if (this.params.autoRotate) {
+                this.params.autoRotate = false;
+            }
+        });
+        
+        // Mouse move - rotate
+        canvas.addEventListener('mousemove', (e) => {
+            if (!this.isDragging) return;
+            
+            const deltaX = e.clientX - this.lastMouseX;
+            const deltaY = e.clientY - this.lastMouseY;
+            
+            this.userRotationY += deltaX * 0.01;
+            this.userRotationX += deltaY * 0.01;
+            
+            this.lastMouseX = e.clientX;
+            this.lastMouseY = e.clientY;
+        });
+        
+        // Mouse up - stop dragging
+        const stopDragging = () => {
+            this.isDragging = false;
+            canvas.style.cursor = 'grab';
+        };
+        
+        canvas.addEventListener('mouseup', stopDragging);
+        canvas.addEventListener('mouseleave', stopDragging);
+        
+        // Mouse wheel - zoom
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            
+            const zoomSpeed = 0.001;
+            this.userScale -= e.deltaY * zoomSpeed;
+            this.userScale = Math.max(0.1, Math.min(5.0, this.userScale));
+        }, { passive: false });
+        
+        // Touch support for mobile
+        let lastTouchDistance = 0;
+        
+        canvas.addEventListener('touchstart', (e) => {
+            if (e.touches.length === 1) {
+                this.isDragging = true;
+                this.lastMouseX = e.touches[0].clientX;
+                this.lastMouseY = e.touches[0].clientY;
+                this.params.autoRotate = false;
+            } else if (e.touches.length === 2) {
+                const dx = e.touches[0].clientX - e.touches[1].clientX;
+                const dy = e.touches[0].clientY - e.touches[1].clientY;
+                lastTouchDistance = Math.sqrt(dx * dx + dy * dy);
+            }
+        });
+        
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            
+            if (e.touches.length === 1 && this.isDragging) {
+                const deltaX = e.touches[0].clientX - this.lastMouseX;
+                const deltaY = e.touches[0].clientY - this.lastMouseY;
+                
+                this.userRotationY += deltaX * 0.01;
+                this.userRotationX += deltaY * 0.01;
+                
+                this.lastMouseX = e.touches[0].clientX;
+                this.lastMouseY = e.touches[0].clientY;
+            } else if (e.touches.length === 2) {
+                const dx = e.touches[0].clientX - e.touches[1].clientX;
+                const dy = e.touches[0].clientY - e.touches[1].clientY;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                
+                const delta = distance - lastTouchDistance;
+                this.userScale += delta * 0.01;
+                this.userScale = Math.max(0.1, Math.min(5.0, this.userScale));
+                
+                lastTouchDistance = distance;
+            }
+        }, { passive: false });
+        
+        canvas.addEventListener('touchend', () => {
+            this.isDragging = false;
+        });
+        
+        // Set initial cursor
+        canvas.style.cursor = 'grab';
     }
 
     initWebGL3D() {
@@ -634,9 +743,10 @@ class Mesh3DViz {
     }
 
     createModelViewMatrix() {
-        const rx = this.params.rotationX + this.rotation;
-        const ry = this.params.rotationY + this.rotation;
-        const s = this.params.scale;
+        // Combine parameter rotations, auto-rotation, and user interaction
+        const rx = this.params.rotationX + this.rotation + this.userRotationX;
+        const ry = this.params.rotationY + this.rotation + this.userRotationY;
+        const s = this.params.scale * this.userScale;
         
         // Simple rotation and scale matrix
         const cx = Math.cos(rx), sx = Math.sin(rx);
@@ -687,9 +797,116 @@ class PointCloud3DViz {
         this.lastTime = 0;
         this.rotation = 0;
         
+        // Mouse interaction state
+        this.isDragging = false;
+        this.lastMouseX = 0;
+        this.lastMouseY = 0;
+        this.userRotationX = 0;
+        this.userRotationY = 0;
+        this.userScale = 1.0;
+        
         if (gl && gl.createShader) {
             this.initWebGL3D();
+            this.initMouseControls();
         }
+    }
+
+    /**
+     * Initialize mouse controls for 3D interaction
+     */
+    initMouseControls() {
+        const canvas = this.gl.canvas;
+        
+        // Mouse down
+        canvas.addEventListener('mousedown', (e) => {
+            this.isDragging = true;
+            this.lastMouseX = e.clientX;
+            this.lastMouseY = e.clientY;
+            canvas.style.cursor = 'grabbing';
+            
+            if (this.params.autoRotate) {
+                this.params.autoRotate = false;
+            }
+        });
+        
+        // Mouse move
+        canvas.addEventListener('mousemove', (e) => {
+            if (!this.isDragging) return;
+            
+            const deltaX = e.clientX - this.lastMouseX;
+            const deltaY = e.clientY - this.lastMouseY;
+            
+            this.userRotationY += deltaX * 0.01;
+            this.userRotationX += deltaY * 0.01;
+            
+            this.lastMouseX = e.clientX;
+            this.lastMouseY = e.clientY;
+        });
+        
+        // Mouse up
+        const stopDragging = () => {
+            this.isDragging = false;
+            canvas.style.cursor = 'grab';
+        };
+        
+        canvas.addEventListener('mouseup', stopDragging);
+        canvas.addEventListener('mouseleave', stopDragging);
+        
+        // Mouse wheel - zoom
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            
+            const zoomSpeed = 0.001;
+            this.userScale -= e.deltaY * zoomSpeed;
+            this.userScale = Math.max(0.1, Math.min(5.0, this.userScale));
+        }, { passive: false });
+        
+        // Touch support
+        let lastTouchDistance = 0;
+        
+        canvas.addEventListener('touchstart', (e) => {
+            if (e.touches.length === 1) {
+                this.isDragging = true;
+                this.lastMouseX = e.touches[0].clientX;
+                this.lastMouseY = e.touches[0].clientY;
+                this.params.autoRotate = false;
+            } else if (e.touches.length === 2) {
+                const dx = e.touches[0].clientX - e.touches[1].clientX;
+                const dy = e.touches[0].clientY - e.touches[1].clientY;
+                lastTouchDistance = Math.sqrt(dx * dx + dy * dy);
+            }
+        });
+        
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            
+            if (e.touches.length === 1 && this.isDragging) {
+                const deltaX = e.touches[0].clientX - this.lastMouseX;
+                const deltaY = e.touches[0].clientY - this.lastMouseY;
+                
+                this.userRotationY += deltaX * 0.01;
+                this.userRotationX += deltaY * 0.01;
+                
+                this.lastMouseX = e.touches[0].clientX;
+                this.lastMouseY = e.touches[0].clientY;
+            } else if (e.touches.length === 2) {
+                const dx = e.touches[0].clientX - e.touches[1].clientX;
+                const dy = e.touches[0].clientY - e.touches[1].clientY;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                
+                const delta = distance - lastTouchDistance;
+                this.userScale += delta * 0.01;
+                this.userScale = Math.max(0.1, Math.min(5.0, this.userScale));
+                
+                lastTouchDistance = distance;
+            }
+        }, { passive: false });
+        
+        canvas.addEventListener('touchend', () => {
+            this.isDragging = false;
+        });
+        
+        canvas.style.cursor = 'grab';
     }
 
     initWebGL3D() {
@@ -850,9 +1067,10 @@ class PointCloud3DViz {
     }
 
     createModelViewMatrix() {
-        const rx = this.params.rotationX + this.rotation;
-        const ry = this.params.rotationY + this.rotation;
-        const s = this.params.scale;
+        // Combine parameter rotations, auto-rotation, and user interaction
+        const rx = this.params.rotationX + this.rotation + this.userRotationX;
+        const ry = this.params.rotationY + this.rotation + this.userRotationY;
+        const s = this.params.scale * this.userScale;
         
         const cx = Math.cos(rx), sx = Math.sin(rx);
         const cy = Math.cos(ry), sy = Math.sin(ry);
