@@ -1,0 +1,39 @@
+{
+  "name": "modular-data-visualizer",
+  "version": "1.0.0",
+  "description": "Universal browser-based modular visualizer for any data type - audio, EEG, MRI, and more",
+  "main": "index.html",
+  "type": "module",
+  "scripts": {
+    "start": "python -m http.server 8000",
+    "serve": "python -m http.server 8000",
+    "dev": "echo 'Open index.html in your browser or run: npm start'"
+  },
+  "keywords": [
+    "visualization",
+    "webgl",
+    "audio",
+    "eeg",
+    "neuroimaging",
+    "data-viz",
+    "browser-based",
+    "client-side",
+    "gpu-accelerated",
+    "neuroscience"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "dependencies": {},
+  "devDependencies": {},
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/modular-data-visualizer"
+  },
+  "browser": {
+    "es6": true,
+    "webgl2": true
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}

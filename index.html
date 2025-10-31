@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Modular Data Visualizer</title>
+    <link rel="stylesheet" href="css/main.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Header -->
+        <header class="header">
+            <h1>🌊 Modular Data Visualizer</h1>
+            <p class="tagline">Universal browser-based visualization for any data type</p>
+        </header>
+
+        <!-- Control Panel -->
+        <aside class="control-panel">
+            <div class="section">
+                <h2>📁 Data Input</h2>
+                <div class="drop-zone" id="dropZone">
+                    <p>Drop files here or click to upload</p>
+                    <input type="file" id="fileInput" multiple accept="*/*" hidden>
+                </div>
+                <div id="dataInfo" class="data-info"></div>
+            </div>
+
+            <div class="section">
+                <h2>🎨 Visualization Type</h2>
+                <select id="vizSelector" class="viz-selector">
+                    <option value="auto">Auto-detect</option>
+                    <option value="waveform">Waveform (Audio/EEG)</option>
+                    <option value="spectrogram">Spectrogram</option>
+                    <option value="3d-brain">3D Brain (MRI/fMRI)</option>
+                    <option value="timeseries">Time Series</option>
+                    <option value="heatmap">Heatmap</option>
+                    <option value="scatter3d">3D Scatter Plot</option>
+                    <option value="network">Network Graph</option>
+                    <option value="volumetric">Volumetric Rendering</option>
+                </select>
+            </div>
+
+            <div class="section">
+                <h2>⚙️ Parameters</h2>
+                <div id="parameterControls" class="parameter-controls">
+                    <!-- Dynamic controls will be injected here -->
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>🔗 Share</h2>
+                <button id="generateQR" class="btn-primary">Generate QR Code</button>
+                <div id="qrContainer" class="qr-container"></div>
+                <button id="copyLink" class="btn-secondary">Copy Link</button>
+            </div>
+        </aside>
+
+        <!-- Visualization Canvas -->
+        <main class="canvas-container">
+            <canvas id="mainCanvas"></canvas>
+            <div id="stats" class="stats-overlay"></div>
+        </main>
+    </div>
+
+    <!-- Core Modules -->
+    <script type="module" src="js/core/UniversalDataAdapter.js"></script>
+    <script type="module" src="js/core/VisualizationEngine.js"></script>
+    <script type="module" src="js/core/StateManager.js"></script>
+    <script type="module" src="js/utils/QRGenerator.js"></script>
+    <script type="module" src="js/main.js"></script>
+</body>
+</html>
