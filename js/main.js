@@ -703,8 +703,8 @@ class ModularDataVisualizer {
     /**
      * Check if URL contains state parameter
      */
-    checkURLState() {
-        const state = this.stateManager.loadFromURL();
+    async checkURLState() {
+        const state = await this.stateManager.loadFromURL();
         
         if (state) {
             console.log('📥 Loading state from URL:', state);

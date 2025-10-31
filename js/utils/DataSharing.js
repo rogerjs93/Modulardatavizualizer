@@ -19,82 +19,53 @@ export class DataSharing {
      */
     async uploadToGist(data, originalFile, vizState) {
         try {
-            console.log('📤 Uploading to GitHub Gist...');
-
-            // Create file content
-            let fileContent = this.serializeDataFile(data, originalFile);
+            // Try URL-based sharing first (most reliable, no auth needed)
+            console.log('📤 Preparing shareable link...');
             
-            // Try to compress if content is large
+            // Create minimal state object
+            const shareState = {
+                version: '1.0.0',
+                vizType: vizState.vizType,
+                parameters: vizState.parameters,
+                metadata: vizState.metadata,
+                timestamp: new Date().toISOString()
+            };
+
+            // Serialize and compress
+            let stateStr = JSON.stringify(shareState);
             let isCompressed = false;
-            if (fileContent.length > 100000) { // Compress if > 100KB
+            
+            if (stateStr.length > 1000) {
                 try {
-                    const compressed = await this.compressString(fileContent);
-                    if (compressed.length < fileContent.length * 0.8) { // Only use if 20%+ reduction
-                        fileContent = compressed;
+                    const compressed = await this.compressString(stateStr);
+                    if (compressed.length < stateStr.length * 0.8) {
+                        stateStr = compressed;
                         isCompressed = true;
-                        console.log(`🗜️ Compressed: ${this.formatBytes(fileContent.length)} (${((1 - compressed.length / fileContent.length) * 100).toFixed(1)}% reduction)`);
+                        console.log(`🗜️ Compressed: ${this.formatBytes(stateStr.length)} (${((1 - compressed.length / stateStr.length) * 100).toFixed(1)}% reduction)`);
                     }
                 } catch (compressError) {
                     console.warn('⚠️ Compression failed, using uncompressed:', compressError);
                 }
             }
+
+            // Encode for URL
+            const encoded = encodeURIComponent(stateStr);
             
-            // Create Gist payload
-            const gistData = {
-                description: `Modular Data Visualizer - ${originalFile.name}`,
-                public: true,
-                files: {
-                    [originalFile.name + (isCompressed ? '.gz.b64' : '')]: {
-                        content: fileContent
-                    },
-                    'viz-state.json': {
-                        content: JSON.stringify({
-                            ...vizState,
-                            _compressed: isCompressed
-                        }, null, 2)
-                    },
-                    'README.md': {
-                        content: this.generateReadme(originalFile, vizState)
-                    }
-                }
-            };
-
-            // Upload to GitHub Gist (anonymous)
-            const response = await fetch('https://api.github.com/gists', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/vnd.github.v3+json'
-                },
-                body: JSON.stringify(gistData)
-            });
-
-            if (!response.ok) {
-                throw new Error(`GitHub API error: ${response.status}`);
+            // Check if it fits in URL (browsers typically support ~2000 chars)
+            if (encoded.length < 2000) {
+                const shareURL = `${window.location.origin}${window.location.pathname}?state=${encoded}${isCompressed ? '&c=1' : ''}`;
+                console.log('✅ Share URL created (URL-based)');
+                return shareURL;
             }
 
-            const gist = await response.json();
-            
-            // Generate short URL
-            const gistId = gist.id;
-            const shareURL = `${window.location.origin}${window.location.pathname}?gist=${gistId}`;
-            
-            // Cache the gist
-            this.gistCache.set(gistId, {
-                url: shareURL,
-                gist: gist,
-                timestamp: Date.now()
-            });
-
-            console.log('✅ Gist created:', gist.html_url);
-            console.log('🔗 Share URL:', shareURL);
-
-            return shareURL;
+            // For larger data, use localStorage with a short ID
+            console.log('⚠️ Data too large for URL, using localStorage...');
+            return this.uploadToLocalStorage(data, originalFile, vizState);
 
         } catch (error) {
-            console.error('❌ Error uploading to Gist:', error);
+            console.error('❌ Error creating share link:', error);
             
-            // Fallback: use localStorage for small files
+            // Final fallback: use localStorage
             if (this.canUseLocalStorage(data)) {
                 return this.uploadToLocalStorage(data, originalFile, vizState);
             }

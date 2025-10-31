@@ -63,12 +63,27 @@ export class StateManager {
     /**
      * Load state from URL
      */
-    loadFromURL() {
+    async loadFromURL() {
         const urlParams = new URLSearchParams(window.location.search);
         const stateParam = urlParams.get('state');
+        const isCompressed = urlParams.get('c') === '1';
         
         if (stateParam) {
-            const state = this.deserializeState(decodeURIComponent(stateParam));
+            let stateStr = decodeURIComponent(stateParam);
+            
+            // Decompress if needed
+            if (isCompressed) {
+                try {
+                    console.log('🗜️ Decompressing state from URL...');
+                    stateStr = await this.decompressGzip(stateStr);
+                    console.log('✅ State decompressed');
+                } catch (error) {
+                    console.error('❌ Decompression failed:', error);
+                    return null;
+                }
+            }
+            
+            const state = this.deserializeState(stateStr);
             if (state) {
                 this.currentState = state;
                 return state;
@@ -76,6 +91,52 @@ export class StateManager {
         }
         
         return null;
+    }
+
+    /**
+     * Decompress gzip-compressed base64 string
+     */
+    async decompressGzip(base64Str) {
+        // Decode base64
+        const binary = atob(base64Str);
+        const compressed = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) {
+            compressed[i] = binary.charCodeAt(i);
+        }
+        
+        // Create decompression stream
+        const stream = new ReadableStream({
+            start(controller) {
+                controller.enqueue(compressed);
+                controller.close();
+            }
+        });
+        
+        // Decompress using gzip
+        const decompressedStream = stream.pipeThrough(new DecompressionStream('gzip'));
+        
+        // Read decompressed data
+        const reader = decompressedStream.getReader();
+        const chunks = [];
+        
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            chunks.push(value);
+        }
+        
+        // Combine chunks
+        const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+        const decompressed = new Uint8Array(totalLength);
+        let offset = 0;
+        for (const chunk of chunks) {
+            decompressed.set(chunk, offset);
+            offset += chunk.length;
+        }
+        
+        // Convert back to string
+        const decoder = new TextDecoder();
+        return decoder.decode(decompressed);
     }
 
     /**
